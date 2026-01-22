@@ -15,7 +15,14 @@ from transformers.quantizers import AutoHfQuantizer, HfQuantizer
 
 from .profiler import LayeredProfiler
 
-from optimum.bettertransformer import BetterTransformer
+# BetterTransformer is deprecated in newer transformers (4.49+)
+# Try to import it, but fall back gracefully if not available
+try:
+    from optimum.bettertransformer import BetterTransformer
+    bettertransformer_available = True
+except ImportError:
+    bettertransformer_available = False
+    print('>>>> BetterTransformer not available (optimum not installed or deprecated)')
 
 from .utils import clean_memory, load_layer, \
     find_or_create_local_splitted_path
@@ -185,34 +192,40 @@ class AirLLMBaseModel(GenerationMixin):
         self.model = None
 
         if self.get_use_better_transformer():
-            try:
-                with init_empty_weights():
-                    self.model = AutoModelForCausalLM.from_config(self.config, trust_remote_code=True)
-                    self.model = BetterTransformer.transform(self.model)  # enable flash attention
-            except ValueError as ve:
-                del self.model
-                clean_memory()
-                self.model = None
+            # Only try BetterTransformer if it's available (optimum installed and not deprecated)
+            if bettertransformer_available:
+                try:
+                    with init_empty_weights():
+                        self.model = AutoModelForCausalLM.from_config(self.config, trust_remote_code=True)
+                        self.model = BetterTransformer.transform(self.model)  # enable flash attention
+                except (ValueError, Exception) as ve:
+                    print(f"BetterTransformer failed: {ve}")
+                    del self.model
+                    clean_memory()
+                    self.model = None
 
             if self.model is None:
-                # try way 2.
+                # try way 2: use SDPA (works with transformers 4.36+)
                 try:
 
-                    print(f"new version of transfomer, no need to use BetterTransformer, try setting attn impl to sdpa...")
+                    print(f"Using attn_implementation='sdpa' for flash attention...")
                     self.config.attn_implementation = "sdpa"
 
                     with init_empty_weights():
                         self.model = AutoModelForCausalLM.from_config(self.config, attn_implementation="sdpa", trust_remote_code=True)
-                    print(f"attn imp: {type(self.model.model.layers[3].self_attn)}")
+                    # Check if model has the expected structure
+                    if hasattr(self.model, 'model') and hasattr(self.model.model, 'layers'):
+                        print(f"attn imp: {type(self.model.model.layers[3].self_attn)}")
 
-                except TypeError as ve:
+                except (TypeError, Exception) as ve:
+                    print(f"SDPA fallback failed: {ve}")
                     del self.model
                     clean_memory()
                     self.model = None
 
         # fallback to original way
         if self.model is None:
-            print(f"either BetterTransformer or attn_implementation='sdpa' is available, creating model directly")
+            print(f"Neither BetterTransformer nor attn_implementation='sdpa' available, creating model directly")
             with init_empty_weights():
                 self.model = AutoModelForCausalLM.from_config(self.config, trust_remote_code=True)
 

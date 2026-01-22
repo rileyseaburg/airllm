@@ -24,24 +24,33 @@ class AutoModel:
         else:
             config = AutoConfig.from_pretrained(pretrained_model_name_or_path, trust_remote_code=True)
 
-        if "Qwen2ForCausalLM" in config.architectures[0]:
+        arch = config.architectures[0]
+        model_type = getattr(config, 'model_type', '')
+        
+        if "Qwen2ForCausalLM" in arch:
             return "airllm", "AirLLMQWen2"
-        elif "QWen" in config.architectures[0]:
+        elif "QWen" in arch:
             return "airllm", "AirLLMQWen"
-        elif "Baichuan" in config.architectures[0]:
+        elif "Baichuan" in arch:
             return "airllm", "AirLLMBaichuan"
-        elif "ChatGLM" in config.architectures[0]:
+        # GLM-4 MoE models (like GLM-4.7) - check before ChatGLM
+        elif "GLM4" in arch or model_type == "glm4_moe" or model_type == "glm4":
+            # Use MoE class for MoE models, base class for dense
+            if "moe" in model_type.lower() or "MoE" in arch:
+                return "airllm", "AirLLMGLM4MoE"
+            return "airllm", "AirLLMGLM4"
+        elif "ChatGLM" in arch:
             return "airllm", "AirLLMChatGLM"
-        elif "InternLM" in config.architectures[0]:
+        elif "InternLM" in arch:
             return "airllm", "AirLLMInternLM"
-        elif "Mistral" in config.architectures[0]:
+        elif "Mistral" in arch:
             return "airllm", "AirLLMMistral"
-        elif "Mixtral" in config.architectures[0]:
+        elif "Mixtral" in arch:
             return "airllm", "AirLLMMixtral"
-        elif "Llama" in config.architectures[0]:
+        elif "Llama" in arch:
             return "airllm", "AirLLMLlama2"
         else:
-            print(f"unknown artichitecture: {config.architectures[0]}, try to use Llama2...")
+            print(f"unknown architecture: {arch}, try to use Llama2...")
             return "airllm", "AirLLMLlama2"
 
     @classmethod
