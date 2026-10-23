@@ -5,5 +5,5 @@ accelerate @ git+https://github.com/huggingface/accelerate.git@v0.20.3
 einops==0.6.1
 evaluate==0.4.0
 scikit-learn==1.2.2
-sentencepiece==0.1.99
+sentencepiece==0.2.1
 wandb==0.15.3
